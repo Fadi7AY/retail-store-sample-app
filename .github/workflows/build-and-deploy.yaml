@@ -1,0 +1,66 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: vars
+        run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build and push UI image
+        run: |
+          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-ui"
+          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/ui
+          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+
+      - name: Build and push Catalog image
+        run: |
+          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-catalog"
+          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/catalog
+          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+
+      - name: Build and push Cart image
+        run: |
+          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-cart"
+          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/cart
+          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+
+      - name: Build and push Orders image
+        run: |
+          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-orders"
+          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/orders
+          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+
+      - name: Build and push Checkout image
+        run: |
+          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-checkout"
+          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/checkout
+          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
