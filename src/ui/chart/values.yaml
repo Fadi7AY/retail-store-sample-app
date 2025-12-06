@@ -6,7 +6,10 @@ image:
   pullPolicy: IfNotPresent
   tag: "6486f8f"  # Using the specific tag that exists . for testing only , I will change it in the ci
 
-imagePullSecrets: []
+#imagePullSecrets: []
+imagePullSecrets:
+  - name: aws-ecr-cred
+  
 nameOverride: ""
 fullnameOverride: ""
 

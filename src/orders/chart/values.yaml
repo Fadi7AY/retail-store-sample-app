@@ -9,10 +9,10 @@ image:
   pullPolicy: IfNotPresent
   tag: "6486f8f"
 
-imagePullSecrets: []
+#imagePullSecrets: []
 
-# imagePullSecrets:
-#   - name: aws-ecr-cred
+imagePullSecrets:
+  - name: aws-ecr-cred
 nameOverride: ""
 fullnameOverride: ""
 
