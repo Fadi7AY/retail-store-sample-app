@@ -13,7 +13,7 @@ image:
 #imagePullSecrets: []
 
 imagePullSecrets:
-  - name: aws-ecr-cred
+  - name: ecr-registry-secret
 
 nameOverride: ''
 fullnameOverride: ''
