@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+permissions:
+  contents: write
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -19,6 +22,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -64,3 +70,30 @@ jobs:
           REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-checkout"
           docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/checkout
           docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+# trying to change the image tag in the values files . since latest didnt work for me
+      - name: Update values.yaml with new tags
+        run: |
+          NEW_TAG="${{ steps.vars.outputs.TAG }}"
+          
+          # Update UI
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/ui/chart/values.yaml
+          
+          # Update Catalog
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/catalog/chart/values.yaml
+          
+          # Update Cart
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/cart/chart/values.yaml
+          
+          # Update Orders
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/orders/chart/values.yaml
+          
+          # Update Checkout
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/checkout/chart/values.yaml
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add src/*/chart/values.yaml
+          git commit -m "CI: Update image tags to ${{ steps.vars.outputs.TAG }}"
+          git push
