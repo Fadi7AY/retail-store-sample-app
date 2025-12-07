@@ -1,4 +1,4 @@
-name: Build and Push to ECR
+name: Build, Push, and Deploy (GitOps)
 
 on:
   push:
@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: write
-
-
 
 jobs:
   build-and-push:
@@ -19,12 +17,11 @@ jobs:
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
     steps:
-      - name: Checkout code
+      
+      - name: Checkout Application Code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-
+      
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -32,67 +29,72 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      
       - name: Set image tag
         id: vars
         run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
-      - name: Build and push UI image
+     
+      - name: Build and Push Images
         run: |
-          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-ui"
-          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/ui
-          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+          TAG="${{ steps.vars.outputs.TAG }}"
+          REPO_ROOT="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          
+          docker build -t "$REPO_ROOT/retail-store-ui:$TAG" ./src/ui
+          docker push "$REPO_ROOT/retail-store-ui:$TAG"
+          
+          docker build -t "$REPO_ROOT/retail-store-catalog:$TAG" ./src/catalog
+          docker push "$REPO_ROOT/retail-store-catalog:$TAG"
+          
+          docker build -t "$REPO_ROOT/retail-store-cart:$TAG" ./src/cart
+          docker push "$REPO_ROOT/retail-store-cart:$TAG"
+          
+          docker build -t "$REPO_ROOT/retail-store-orders:$TAG" ./src/orders
+          docker push "$REPO_ROOT/retail-store-orders:$TAG"
+          
+          docker build -t "$REPO_ROOT/retail-store-checkout:$TAG" ./src/checkout
+          docker push "$REPO_ROOT/retail-store-checkout:$TAG"
 
-      - name: Build and push Catalog image
-        run: |
-          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-catalog"
-          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/catalog
-          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
+     
+      - name: Checkout GitOps Repository
+        uses: actions/checkout@v4
+        with:
+          repository: Fadi7AY/retail-store-gitops
+          token: ${{ secrets.GITOPS_PAT }} 
+          path: gitops-repo                
 
-      - name: Build and push Cart image
-        run: |
-          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-cart"
-          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/cart
-          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
-
-      - name: Build and push Orders image
-        run: |
-          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-orders"
-          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/orders
-          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
-
-      - name: Build and push Checkout image
-        run: |
-          REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/retail-store-checkout"
-          docker build -t "$REPO:${{ steps.vars.outputs.TAG }}" ./src/checkout
-          docker push "$REPO:${{ steps.vars.outputs.TAG }}"
-# trying to change the image tag in the values files . since latest didnt work for me
-      - name: Update values.yaml with new tags
+      # 7. Update values.yaml files in the GitOps Repo
+      - name: Update Helm Values
         run: |
           NEW_TAG="${{ steps.vars.outputs.TAG }}"
-          
-          # Update UI
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/ui/chart/values.yaml
-          
-          # Update Catalog
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/catalog/chart/values.yaml
-          
-          # Update Cart
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/cart/chart/values.yaml
-          
-          # Update Orders
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/orders/chart/values.yaml
-          
-          # Update Checkout
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" src/checkout/chart/values.yaml
+          cd gitops-repo
 
-      - name: Commit and Push changes
+          # Update the tags in the 'apps' folder structure
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/ui/values.yaml
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/catalog/values.yaml
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/cart/values.yaml
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/orders/values.yaml
+          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/checkout/values.yaml
+          
+          echo "Changes applied to GitOps repo:"
+          git diff
+
+      - name: Commit and Push to GitOps Repo
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add src/*/chart/values.yaml
-          git commit -m "CI: Update image tags to ${{ steps.vars.outputs.TAG }}"
-          git push
+          cd gitops-repo
+          git config user.name "GitHub Actions CI"
+          git config user.email "actions@github.com"
+          
+          if [[ -n $(git status -s) ]]; then
+            git add .
+            git commit -m "CI: Update image tags to ${{ steps.vars.outputs.TAG }}"
+            git push origin main
+            echo "Successfully updated GitOps repo."
+          else
+            echo "No changes detected."
+          fi
