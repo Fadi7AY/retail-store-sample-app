@@ -6,22 +6,47 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read # Only read permissions needed for the app repo
 
 jobs:
-  build-and-push:
+  # JOB 1: Detect which services changed in the src/ directory
+  detect-changes:
     runs-on: ubuntu-latest
-
-    env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-
+    outputs:
+      # This outputs a JSON array of changed services (e.g., '["ui", "cart"]')
+      matrix: ${{ steps.filter.outputs.changes }}
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
       
-      - name: Checkout Application Code
+      - name: Path Filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Define filters to map paths to service names
+          filters: |
+            ui: 'src/ui/**'
+            catalog: 'src/catalog/**'
+            cart: 'src/cart/**'
+            orders: 'src/orders/**'
+            checkout: 'src/checkout/**'
+
+  # JOB 2: Build and Push ONLY changed services in PARALLEL
+  build-and-push:
+    needs: detect-changes
+    # Skip this job if no services changed
+    if: ${{ needs.detect-changes.outputs.matrix != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Parse the JSON array from Job 1 to create parallel jobs
+        service: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    
+    steps:
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -29,57 +54,52 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      
       - name: Set image tag
-        id: vars
-        run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-     
-      - name: Build and Push Images
+      # Builds only the specific service for this matrix run
+      - name: Build and Push ${{ matrix.service }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPO_NAME: retail-store-${{ matrix.service }}
         run: |
-          TAG="${{ steps.vars.outputs.TAG }}"
-          REPO_ROOT="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          
-          docker build -t "$REPO_ROOT/retail-store-ui:$TAG" ./src/ui
-          docker push "$REPO_ROOT/retail-store-ui:$TAG"
-          
-          docker build -t "$REPO_ROOT/retail-store-catalog:$TAG" ./src/catalog
-          docker push "$REPO_ROOT/retail-store-catalog:$TAG"
-          
-          docker build -t "$REPO_ROOT/retail-store-cart:$TAG" ./src/cart
-          docker push "$REPO_ROOT/retail-store-cart:$TAG"
-          
-          docker build -t "$REPO_ROOT/retail-store-orders:$TAG" ./src/orders
-          docker push "$REPO_ROOT/retail-store-orders:$TAG"
-          
-          docker build -t "$REPO_ROOT/retail-store-checkout:$TAG" ./src/checkout
-          docker push "$REPO_ROOT/retail-store-checkout:$TAG"
+          echo "Building ${{ matrix.service }}..."
+          docker build -t $ECR_REGISTRY/$REPO_NAME:$TAG ./src/${{ matrix.service }}
+          docker push $ECR_REGISTRY/$REPO_NAME:$TAG
+          echo "::notice::Successfully pushed $REPO_NAME:$TAG"
 
-     
+  #  Update the GitOps Repo
+  update-manifests:
+    needs: [detect-changes, build-and-push]
+    if: ${{ needs.detect-changes.outputs.matrix != '[]' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout GitOps Repository
         uses: actions/checkout@v4
         with:
           repository: Fadi7AY/retail-store-gitops
-          token: ${{ secrets.GITOPS_PAT }} 
-          path: gitops-repo                
+          token: ${{ secrets.GITOPS_PAT }}
+          path: gitops-repo
 
-      # 7. Update values.yaml files in the GitOps Repo
       - name: Update Helm Values
+        env:
+          CHANGED_SERVICES: ${{ needs.detect-changes.outputs.matrix }}
+          TAG: ${{ github.sha }} 
         run: |
-          NEW_TAG="${{ steps.vars.outputs.TAG }}"
+          SHORT_TAG=${TAG::7}
           cd gitops-repo
-
-          # Update the tags in the 'apps' folder structure
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/ui/values.yaml
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/catalog/values.yaml
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/cart/values.yaml
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/orders/values.yaml
-          sed -i "s/tag: \".*\"/tag: \"$NEW_TAG\"/" apps/checkout/values.yaml
+          
+          # Iterate ONLY through the services that actually changed/built
+          echo $CHANGED_SERVICES | jq -r '.[]' | while read service; do
+            echo "Updating tag for $service to $SHORT_TAG"
+            
+            # Update the specific values.yaml for the changed service
+            sed -i "s/tag: \".*\"/tag: \"$SHORT_TAG\"/" apps/$service/values.yaml
+          done
           
           echo "Changes applied to GitOps repo:"
           git diff
@@ -92,9 +112,8 @@ jobs:
           
           if [[ -n $(git status -s) ]]; then
             git add .
-            git commit -m "CI: Update image tags to ${{ steps.vars.outputs.TAG }}"
+            git commit -m "CI: Update image tags for services: ${{ needs.detect-changes.outputs.matrix }} to ${GITHUB_SHA::7}"
             git push origin main
-            echo "Successfully updated GitOps repo."
           else
             echo "No changes detected."
           fi
