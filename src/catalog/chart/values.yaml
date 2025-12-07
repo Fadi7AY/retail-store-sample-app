@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: 992824239500.dkr.ecr.eu-west-2.amazonaws.com/retail-store-catalog
   pullPolicy: IfNotPresent
-  tag: "750ff11"
+  tag: "d860ef6"
 
 #imagePullSecrets: []
 
