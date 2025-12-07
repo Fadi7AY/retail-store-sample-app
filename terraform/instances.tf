@@ -72,3 +72,4 @@ resource "aws_instance" "worker2" {
     Role = "worker"
   }
 }
+
