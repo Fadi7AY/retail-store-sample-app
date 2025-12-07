@@ -1,4 +1,5 @@
 #!/bin/bash
+# scripts/install-prerequisites.sh
 set -e
 
 echo "[*] Disabling swap..."
@@ -7,14 +8,17 @@ sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
 echo "[*] Configuring kernel modules..."
 cat <<CONF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
 br_netfilter
 CONF
 
+sudo modprobe overlay
 sudo modprobe br_netfilter
 
 echo "[*] Setting sysctl for Kubernetes..."
 cat <<CONF | sudo tee /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward = 1
 CONF
 
@@ -36,9 +40,10 @@ echo \
 sudo apt-get update -y
 sudo apt-get install -y containerd.io
 
-echo "[*] Configuring containerd..."
+echo "[*] Configuring containerd with SystemdCgroup..."
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 sudo systemctl restart containerd
 sudo systemctl enable containerd
 
@@ -58,5 +63,13 @@ sudo apt-mark hold kubelet kubeadm kubectl
 
 sudo systemctl enable kubelet
 
-echo "[*] Prerequisites installed."
+echo "[*] Installing AWS CLI..."
+if ! command -v aws &> /dev/null; then
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    sudo apt-get install -y unzip
+    unzip awscliv2.zip
+    sudo ./aws/install
+    rm -rf aws awscliv2.zip
+fi
 
+echo "[*] Prerequisites installed successfully."

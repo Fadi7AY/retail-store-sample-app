@@ -23,6 +23,7 @@ resource "aws_instance" "control_plane" {
   vpc_security_group_ids      = [aws_security_group.control_plane.id]
   key_name                    = var.key_name
   associate_public_ip_address = true
+  iam_instance_profile = aws_iam_instance_profile.k8s_node_profile.name 
 
   tags = {
     Name = "k8s-control-plane"
@@ -38,6 +39,12 @@ resource "aws_instance" "worker1" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   key_name                    = var.key_name
   associate_public_ip_address = true
+  iam_instance_profile = aws_iam_instance_profile.k8s_node_profile.name 
+  
+  root_block_device {
+    volume_size = 20    
+    volume_type = "gp3" 
+  }
 
   tags = {
     Name = "k8s-worker-1"
@@ -53,6 +60,12 @@ resource "aws_instance" "worker2" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   key_name                    = var.key_name
   associate_public_ip_address = true
+  iam_instance_profile = aws_iam_instance_profile.k8s_node_profile.name 
+
+  root_block_device {
+    volume_size = 20    
+    volume_type = "gp3" 
+  }
 
   tags = {
     Name = "k8s-worker-2"
