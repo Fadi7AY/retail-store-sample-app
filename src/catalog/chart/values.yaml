@@ -1,4 +1,5 @@
 replicaCount: 1
+#TESTING CHANGE DETECTION2
 
 image:
   repository: 992824239500.dkr.ecr.eu-west-2.amazonaws.com/retail-store-catalog
