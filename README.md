@@ -1,6 +1,5 @@
 # Retail Store Sample App - Kubernetes kubeadm Cluster Project
 
-👉 **GitOps Repository:** Fadi7AY/retail-store-gitops
 
 
 ![Banner](./docs/images/banner.png) 
@@ -16,6 +15,9 @@
   <h2>Kubernetes kubeadm Cluster Project</h2>
   </strong>
 </div>
+
+👉 **GitOps Repository:** [**Fadi7AY/retail-store-gitops**](https://github.com/Fadi7AY/retail-store-gitops)
+
 
 This is a comprehensive Kubernetes project designed to teach students how to deploy a complete microservices application on a **kubeadm cluster**. The project covers cluster setup, infrastructure provisioning with Terraform, CI/CD pipelines, manual deployment using Helm charts, and automated GitOps-based deployment with ArgoCD.
 
