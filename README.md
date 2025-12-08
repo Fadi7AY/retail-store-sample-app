@@ -1,5 +1,8 @@
 # Retail Store Sample App - Kubernetes kubeadm Cluster Project
 
+👉 **GitOps Repository:** Fadi7AY/retail-store-gitops
+
+
 ![Banner](./docs/images/banner.png) 
 
 <div align="center">
